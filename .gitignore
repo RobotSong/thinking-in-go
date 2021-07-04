@@ -17,3 +17,6 @@
 # Idea
 .idea
 *.iml
+
+# vs code
+.vscode
