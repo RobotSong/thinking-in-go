@@ -370,3 +370,227 @@ repeatFn := func(
 Speaking of one stage being computationally expensive, how can we help mitigate this? 
 Won’t it rate-limit the entire pipeline?  
 For ways to help mitigate this, let’s discuss the fan-out, fan-in technique.
+
+# Fan-out, Fan-in
+
+Fan-out is a term to describe the process of starting multiple goroutines to handle input from the pipeline, 
+and fan-in is a term to describe the process of combining multiple results into one channel.
+
+Fan-out 是多个 goroutine 来处理来自管道的输入的过程。  
+Fan-in  将多个结果合并到一个通道的过程。
+
+So what makes a stage of a pipeline suited for utilizing this pattern? 
+You might consider fanning out one of your stages if both of the following apply:
+什么情况下适合这个模式？符合以下两点：
+1. It doesn’t rely on values that the stage had calculated before.
+2. It takes a long time to run.
+
+
+# The or-done-channel
+Unlike with pipelines, you can’t make any assertions about how a channel will behave
+when code you’re working with is canceled via its done channel.
+当需要 done channel 的时候，一般会写出像下面的代码：
+```
+loop:
+for {
+   select {
+   case: <-done:
+      break loop
+   case maybeVal, ok := <- myChan:
+      if ok == false {
+         return // or maybe break from for
+      }
+      // Do something with val
+   }
+}
+
+```
+Continuing with
+the theme of utilizing goroutines to write clearer concurrent code, 
+and not prematurely optimizing, we can fix this with a single goroutine.
+建议使用单独的 goroutine , 而不是过早的优化, 改为如下:
+```
+orDone := func(done , c <- chan interface{}) <- chan interface{} {
+   valStream := make(chan interface{})
+   go func() {
+      defer close(valStream)
+      for {
+         select {
+         case <-done:
+            return
+         case v, ok := <-c:
+            if ok == false {
+               return
+            }
+            select {
+            case valStream <- v:
+            case <-done:
+            }
+         }
+      }
+   }()
+   return valStream
+}
+
+
+// Doing this allows us to get back to simple for loops, like so:
+for val := range orDone(done, myChan) {
+   // Do something with val
+}
+```
+
+# The tee-channel
+Imagine a channel of user commands: 
+you might want to take in a stream of user commands on a channel, send
+them to something that executes them, 
+and also send them to something that logs the commands for later auditing.
+
+Taking its name from the tee command in Unix-like systems, the tee-channel does
+just this. You can pass it a channel to read from, and it will return two separate chan‐
+nels that will get the same value:
+```
+tee := func(
+   done <- chan interface{},
+   in <- chan interface{},   
+) (_, _ chan interface{}) {
+   out1 := make(chan interface{})
+   out2 := make(chan interface{})
+   go func() {
+      defer close(out1)
+      defer close(out2)
+      for val := range orDone(done, in) {
+         var out1, out2 = out1, out2
+         select {
+         case <-done:
+         case out1 <- val:
+            out1 = nil
+         case out2 <- val:
+            out2 = nil   
+         }
+      }
+   }()
+   return out1, out2
+}
+```
+
+# The bridge-channel
+As a consumer, the code may not care about the fact that its values come from a
+sequence of channels. In that case, dealing with a channel of channels can be cumbersome. 
+If we instead define a function that can destructure the channel of channels
+into a simple channel—a technique called bridging the channels—this will make it
+much easier for the consumer to focus on the problem at hand. Here’s how we can
+achieve that:
+```go
+package main
+
+import "fmt"
+
+func main() {
+
+	orDone := func(done , c <- chan interface{}) <- chan interface{} {
+		valStream := make(chan interface{})
+		go func() {
+			defer close(valStream)
+			for {
+				select {
+				case <-done:
+					return
+				case v, ok := <-c:
+					if ok == false {
+						return
+					}
+					select {
+					case valStream <- v:
+					case <-done:
+					}
+				}
+			}
+		}()
+		return valStream
+	}
+	
+	bridge := func(
+		done <- chan interface{},
+		chanStream <-chan <-chan interface{},
+		) <- chan interface{} {
+		valStream := make(chan interface{})
+		go func() {
+			defer close(valStream)
+			for {
+				var stream <-chan interface{}
+				select {
+				case mayStream, ok := <- chanStream:
+					if ok == false {
+						return
+					}
+					stream = mayStream
+				case <- done:
+					return
+				}
+				for val := range orDone(done, stream) {
+					select {
+					case valStream <- val:
+					case <- done:
+					}
+					
+				}
+			}
+
+		}()
+		return valStream
+	}
+
+	genVal := func() <-chan <-chan interface{} {
+		chanStream := make(chan (<-chan interface{}))
+		go func() {
+			defer close(chanStream)
+			for i := 0; i < 20; i++ {
+				// chan 容量为1 很重要
+				stream := make(chan interface{}, 1)
+				stream <- i
+				close(stream)
+				chanStream <- stream
+			}
+		}()
+		return chanStream
+	}
+
+	for v := range bridge(nil, genVal()) {
+		fmt.Printf("%v ", v)
+	}
+}
+
+```
+
+# Queuing
+Sometimes it’s useful to begin accepting work for your pipeline even though the pipeline is not yet ready for more. 
+This process is called queuing.
+
+Let’s begin by analyzing situations in which queuing can increase the overall performance of your system. 
+The only applicable situations are: 队列可以提高性能的情况:
+* If batching requests in a stage saves time.
+* If delays in a stage produce a feedback loop into the system.
+
+```
+done := make(chan interface{})
+defer close(done)
+zeros := take(done, 3, repeat(done, 0))
+short := sleep(done, 1*time.Second, zeros)
+buffer := buffer(done, 2, short) // Buffers sends from short by 2
+long := sleep(done, 4*time.Second, short)
+pipeline := long
+```
+
+So from our examples we can begin to see a pattern emerge; queuing should be
+implemented either:
+* At the entrance to your pipeline.
+* In stages where batching will lead to higher efficiency.
+
+
+# The context package 
+The context package serves two primary purpose:
+* To provide an API for canceling branches of your call-graph.
+* To provide a data-bag for transporting request-scope data through your call-graph.
+
+Here is a program that concurrently prints a greeting and a farewell:  
+path: 
