@@ -89,3 +89,51 @@ There are two different types of heartbeats we’ll discuss in this section:
 一个开始工作时, 发送心跳的 代码例子:  
 path: ./heartbeats-begin-work
 
+#  Replicated Requests
+目的:
+For some applications, receiving a response as quickly as possible is the top priority.
+
+In these instances you can make a trade-off: you can replicate
+the request to multiple handlers (whether those be goroutines, processes, or servers),
+and one of them will return faster than the other ones; you can then immediately
+return the result. 
+
+Here’s an example that replicates a simulated request over 10 handlers:  
+path: ./replicated-requests
+
+# Rate limiting
+
+Have you ever wondered why services put rate limits in place? Why not allow unfet‐tered access to a system? The most obvious answer is that by rate limiting a system,
+you prevent entire classes of attack vectors against your system. If malicious users can
+access your system as quickly as their resources allow it, they can do all kinds of
+things.
+
+The point is: if you don’t rate limit requests to your system, you cannot easily
+secure it.
+
+Go's rate limit single example:  
+path: ./rate-limit/normal
+
+Go's rate limit multi example:
+path: ./rate-limit/multi
+
+# Healing Unhealthy Goroutines
+In a long-running process, it can be useful to create a mechanism 
+that ensures your goroutines remain healthy and restarts them if they become unhealthy. We’ll refer to this
+process of restarting goroutines as “healing.”
+
+To heal goroutines, we’ll use our heartbeat pattern to check up on the liveliness of the
+goroutine we’re monitoring. The type of heartbeat will be determined by what you’re
+trying to monitor, but if your goroutine can become livelocked, make sure that the
+heartbeat contains some kind of information indicating that the goroutine is not only
+up, but doing useful work. In this section, for simplicity, we’ll only consider whether
+goroutines are live or dead.
+使用心跳机制来监控 goroutines
+To do so, it will need a reference to a function that can
+start the goroutine. Let’s see what a steward might look like:  
+path: ./healing-unhealthy-goroutines/steward
+
+Let’s take a look at a ward that will generate an integer stream based on a discrete list of
+values:  
+path: ./healing-unhealthy-goroutines/
+
