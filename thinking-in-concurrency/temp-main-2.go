@@ -1,28 +1,27 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"runtime/debug"
+	"log"
+	"runtime/pprof"
+	"time"
 )
 
-type foo int
-type bar int
-
-type LowLevelErr struct {
-	error
-}
-
 func main() {
-	c := context.Background()
-	fmt.Println(&c)
+	log.SetFlags(log.Ltime | log.LUTC)
 
-	m := make(map[interface{}]int)
-	m[foo(1)] = 1
-	m[bar(2)] = 2
-	fmt.Printf("%v\n", m)
-	fmt.Println(m[bar(1)])
-	le := LowLevelErr{}
-	fmt.Printf("error: %v", le.error)
-	debug.Stack()
+	// Every second, log how many goroutines are currently running.
+	go func() {
+		goroutines := pprof.Lookup("goroutine")
+		for range time.Tick(1 * time.Second) {
+			log.Printf("goroutine count:%d\n", goroutines.Count())
+		}
+	}()
+
+	// Create some goroutines which will never exit.
+	var blockForever chan struct{}
+	for i := 0; i < 10; i++ {
+		go func() { <-blockForever }()
+		time.Sleep(500 * time.Millisecond)
+	}
+
 }
