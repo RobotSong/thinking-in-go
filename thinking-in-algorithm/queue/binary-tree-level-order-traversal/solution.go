@@ -38,11 +38,41 @@ func levelOrder(root *TreeNode) [][]int {
 	return ans
 }
 
+func levelOrder1(root *TreeNode) [][]int {
+	if root == nil {
+		return [][]int{}
+	}
+	var ans [][]int
+	var cur []*TreeNode
+	cur = append(cur, root)
+	for len(cur) > 0 {
+		var next []*TreeNode
+		var curResult []int
+		for _, node := range cur {
+			curResult = append(curResult, node.Val)
+			if node.Left != nil {
+				next = append(next, node.Left)
+			}
+			if node.Right != nil {
+				next = append(next, node.Right)
+			}
+		}
+		// 注意这里的迭代滚动前进
+		cur = next
+
+		ans = append(ans, curResult)
+	}
+
+	return ans
+}
+
 func main() {
 	var root = TreeNode{
 		Val: 10,
 	}
 
 	var ans = levelOrder(&root)
+	fmt.Printf("%v\n", ans)
+	ans = levelOrder1(&root)
 	fmt.Printf("%v\n", ans)
 }
