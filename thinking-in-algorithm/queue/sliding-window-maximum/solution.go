@@ -93,4 +93,9 @@ func main() {
 	k := 3
 	ans := maxSlidingWindow(nums, k)
 	fmt.Println(ans)
+	nums = []int{1, 3, 1, 2, 0, 5}
+	k = 3
+	ans = maxSlidingWindow(nums, 3)
+	// 预期结果 [3,3,2,5]
+	fmt.Println(ans)
 }
