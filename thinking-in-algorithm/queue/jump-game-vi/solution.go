@@ -111,7 +111,7 @@ func maxResult(nums []int, k int) int {
 		return 0
 	}
 	// 单调递增循环队列
-	q := Construct(k)
+	q := Construct(k + 1)
 	// 每个位置可以收集到的金币数目
 	get := make([]int, len(nums))
 
@@ -120,8 +120,8 @@ func maxResult(nums []int, k int) int {
 		//也就是都在区间里面的值
 		//当要求get[i]的时候，
 		//单调队列中应该是只能保存[i-k,i-1]这个范围
-		if i-k > 0 {
-			q.popFront(nums[i-k-1])
+		if i-k > 0 && q.Front() == get[i-k-1] {
+			q.FirstDeQueue()
 		}
 		//从单调队列中取得较大值
 		var old int
@@ -132,7 +132,7 @@ func maxResult(nums []int, k int) int {
 		}
 
 		get[i] = old + nums[i]
-		q.pushRear(nums[i])
+		q.pushRear(get[i])
 	}
 
 	return get[len(nums)-1]
@@ -146,10 +146,10 @@ func main() {
 	//k = 2
 	//ans = maxResult(nums, k)
 	//fmt.Println(ans)
-	// 错误答案 7
-	nums = []int{10, -5, -2, 4, 0, 3}
-	k = 3
-	// 预期结果 17 FIXME
+	//
+	nums = []int{0, -1, -2, -3, 1}
+	k = 2
+	// 预期结果 -1
 	ans = maxResult(nums, k)
 	fmt.Println(ans)
 }
