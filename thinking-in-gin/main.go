@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
+	"log"
+	"net/http"
 )
 
 var db = make(map[string]string)
@@ -19,7 +21,7 @@ func setupRouter() *gin.Engine {
 		c.String(http.StatusOK, "pong")
 	})
 
-	// Get user value
+	// Get user value 获取 URL 路径上的参数
 	r.GET("/user/:name", func(c *gin.Context) {
 		user := c.Params.ByName("name")
 		value, ok := db[user]
@@ -64,8 +66,13 @@ func setupRouter() *gin.Engine {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		}
 	})
-
-	r.PUT("/myput")
+	// 获取  ? 后的参数
+	r.GET("/search", func(c *gin.Context) {
+		keyword := c.Query("keyword")
+		page := c.Query("page")
+		fmt.Println("keyword:", keyword)
+		fmt.Println("page:", page)
+	})
 
 	return r
 }
@@ -85,10 +92,109 @@ func APIParam(r *gin.Engine) {
 	})
 }
 
+// PostForm 获取 form 中的参数
+func PostForm(r *gin.Engine) {
+	r.POST("/api/form", func(c *gin.Context) {
+		uname := c.PostForm("uname")
+		pwd := c.PostForm("pwd")
+		c.JSON(http.StatusOK, gin.H{
+			"uname": uname,
+			"pwd":   pwd,
+		})
+	})
+}
+
+type PostParams struct {
+	Name string `json:"name" binding:"required"`
+	Age  int    `json:"age" binding:"mustBig"`
+	Sex  int    `json:"sex" binding:"required"`
+}
+
+// PostJSON 从 请求体中 json 格式化成对象
+func PostJSON(r *gin.Engine) {
+	r.POST("/api/json", func(c *gin.Context) {
+		var p PostParams
+		err := c.ShouldBindJSON(&p)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"msg": "参数错误",
+			})
+			println(err.Error())
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"form": p,
+		})
+	})
+}
+
+// PostFormSingleFile  单个文件上传
+func PostFormSingleFile(r *gin.Engine) {
+	r.POST("/api/single/upload", func(c *gin.Context) {
+		// 单文件
+		file, _ := c.FormFile("file")
+		log.Println(file.Filename)
+		category := c.PostForm("category")
+		log.Println("分类:{}", category)
+		// 上传文件至指定目录
+		err := c.SaveUploadedFile(file, "D:\\tmp\\"+file.Filename)
+		if err != nil {
+			println("上传文件失败,", err.Error())
+		}
+
+		c.String(http.StatusOK, fmt.Sprintf("'%s' uploaded!", file.Filename))
+	})
+}
+
+// PostFormMultipartFile  多个文件上传
+func PostFormMultipartFile(r *gin.Engine) {
+	r.POST("/api/multipart/upload", func(c *gin.Context) {
+		// 单文件
+		form, _ := c.MultipartForm()
+
+		category := c.PostForm("category")
+		log.Println("分类:", category)
+		files := form.File["files"]
+
+		fnames := ""
+		for _, file := range files {
+			// 上传文件至指定目录
+			err := c.SaveUploadedFile(file, "D:\\tmp\\"+file.Filename)
+			if err != nil {
+				println("上传文件失败,", err.Error())
+				continue
+			}
+			fnames += file.Filename + ";"
+		}
+
+		c.String(http.StatusOK, fmt.Sprintf("'%s' uploaded!", fnames))
+	})
+}
+
+var mustBig validator.Func = func(fl validator.FieldLevel) bool {
+	val, ok := fl.Field().Interface().(int)
+	if ok {
+		if val < 18 {
+			return false
+		}
+	}
+	return true
+}
+
 func main() {
 	gin.ForceConsoleColor()
 	r := setupRouter()
+
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		v.RegisterValidation("mustBig", mustBig)
+	}
+
 	APIParam(r)
+	PostForm(r)
+	PostJSON(r)
+	PostFormSingleFile(r)
+	PostFormMultipartFile(r)
 	// Listen and Server in 0.0.0.0:8080
-	_ = r.Run(":8080")
+	_ = r.Run(":8181")
 }
