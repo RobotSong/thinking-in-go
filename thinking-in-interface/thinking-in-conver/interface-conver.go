@@ -4,7 +4,8 @@ import "fmt"
 
 func main() {
 	var s Person = &Student{name: "halfrost"}
-	s.sayHello("everyone")
+	var hello = s.sayHello("everyone")
+	fmt.Printf("%s\n", hello)
 }
 
 type Person interface {
